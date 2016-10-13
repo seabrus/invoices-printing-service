@@ -4,7 +4,7 @@ import uuid from 'uuid';
 import PDFDocument from 'pdfkit';
 import { S3 } from 'aws-sdk';
 import { WriteStream } from 's3-streams';
-
+import moment from 'moment';
 
 /**
  * Draws an invoice as a PDF document
@@ -20,15 +20,83 @@ import { WriteStream } from 's3-streams';
       "patronomic": "Григорович",
       "surname": "Шевченко",
       "flatNum": "147",
-      "chiefAccounter": "Олена Петрівна Гонтар"
+      "chiefAccounter": "Олена Петрівна Гонтар",
+      "services": [
+        {
+          "name": "Квартплата",
+          "shortName": "Кв.плата",
+          "tarif": 55.32,
+          "nastupPokaznik": 200,
+          "poperedPokaznik": 160,
+          "riznitsa": 40,
+          "summa": 1200.96
+        },
+        {
+          "name": "РЕМ",
+          "shortName": "РЕМ",
+          "tarif": 22.07,
+          "nastupPokaznik": 34,
+          "poperedPokaznik": 30,
+          "riznitsa": 4,
+          "summa": 41.23
+        },
+        {
+          "name": "Вода",
+          "shortName": "Вода",
+          "tarif": 100.8,
+          "nastupPokaznik": 5674,
+          "poperedPokaznik": 5670,
+          "riznitsa": 4,
+          "summa": 55.82
+        },
+        {
+          "name": "Сміття",
+          "shortName": "Сміття",
+          "tarif": 21.11,
+          "nastupPokaznik": 100,
+          "poperedPokaznik": 87,
+          "riznitsa": 13,
+          "summa": 12.35
+        }
+      ]
     };
  */
 function createInvoicePDF(doc, data) {
-  const ukrMonths = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
-    'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
-  let str = '';
+  // Check the input data
+  const codeEDRPOU = data.codeEDRPOU || '00000000';
+  const orgName = data.orgName || 'ОСББ 1';
+  const orderNum = data.orderNum || '000';
+  const firstName = data.firstName || 'Прiзвище';
+  const patronomic = data.patronomic || 'Ім\'я';
+  const surname = data.surname || 'По-батьковi';
+  const flatNum = data.flatNum || '000';
+  const chiefAccounter = data.chiefAccounter || 'Головний бухгалтер';
+  const services = data.services || [];
+  if (services.length === 0) {
+    services[0] =
+      { name: '', shortName: '', nastupPokaznik: 0, poperedPokaznik: 0, riznitsa: 0, summa: 0 };
+  }
+  const servicesNum = services.length;
+  for (let k = 0; k < servicesNum; k++) {
+    if (!services[k].name) services[k].name = '???';
+    if (!services[k].shortName) services[k].shortName = '???';
+    if (!services[k].tarif) services[k].tarif = 0;
+    if (!services[k].nastupPokaznik) services[k].nastupPokaznik = 0;
+    if (!services[k].poperedPokaznik) services[k].poperedPokaznik = 0;
+    if (!services[k].riznitsa) services[k].riznitsa = 0;
+    if (!services[k].summa || !parseFloat(services[k].summa)) services[k].summa = 0;
+  }
 
-  const invoiceDate = new Date();
+  // The invoice date
+  moment.locale('uk');
+  const curDate = moment().format('LL');
+  const invoiceDate = `від « ${curDate.slice(0, 2)} » ${curDate.slice(3)}`;
+
+  // Total sum
+  let totalSum = 0.0;
+
+  // Auxiliary text buffer
+  let str = '';
 
   // Fonts registration. Letters for convenience: є і ї ґ Є І Ї Ґ
   doc.registerFont('regular', 'fonts/NotoSans-Regular.ttf');
@@ -36,131 +104,145 @@ function createInvoicePDF(doc, data) {
   doc.registerFont('bold', 'fonts/NotoSans-Bold.ttf');
   doc.registerFont('bold-italic', 'fonts/NotoSans-BoldItalic.ttf');
 
-
   // Vertical lines and "Лінія відрізу"
   doc.dash(3, { space: 4 });
-  doc.moveTo(340, 35).lineTo(340, 400).stroke();
-  doc.moveTo(352, 35).lineTo(352, 400).stroke();
+  doc.moveTo(340, 30).lineTo(340, 400).stroke();
+  doc.moveTo(352, 30).lineTo(352, 400).stroke();
   doc.undash();
 
-  doc.fontSize(8);
-  doc.font('regular');
-  doc.text('Л', 340, 70, { width: 12, align: 'center' });
-  doc.text('і', 340, 85, { width: 12, align: 'center' });
-  doc.text('н', 340, 100, { width: 12, align: 'center' });
-  doc.text('і', 340, 115, { width: 12, align: 'center' });
-  doc.text('я', 340, 130, { width: 12, align: 'center' });
-  doc.text('в', 340, 190, { width: 12, align: 'center' });
-  doc.text('і', 340, 205, { width: 12, align: 'center' });
-  doc.text('д', 340, 220, { width: 12, align: 'center' });
-  doc.text('р', 340, 235, { width: 12, align: 'center' });
-  doc.text('і', 340, 250, { width: 12, align: 'center' });
-  doc.text('з', 340, 265, { width: 12, align: 'center' });
-  doc.text('у', 340, 280, { width: 12, align: 'center' });
+  doc.font('regular').fontSize(8);
+  const textOptions12 = { width: 12, align: 'center' };
+  const linia = ['Л', 'і', 'н', 'і', 'я'];
+  const liniaX = 340;
+  const liniaInitY = 70;
+  const liniaStepY = 15;
+  for (let k = 0, len = linia.length; k < len; k++) {
+    doc.text(linia[k], liniaX, liniaInitY + (k * liniaStepY), textOptions12);
+  }
+  const vidriz = ['в', 'і', 'д', 'р', 'і', 'з', 'у'];
+  const vidrizInitY = 190;
+  for (let k = 0, len = vidriz.length; k < len; k++) {
+    doc.text(vidriz[k], liniaX, vidrizInitY + (k * liniaStepY), textOptions12);
+  }
 
-
+  //
   // >>>>> Left-hand pane <<<<<
+  //
   // Section "Ідентифікаційний код ЄДРПОУ"
   doc.fontSize(8);
   str = 'Ідентифікаційний код ЄДРПОУ    ';
-  doc.font('regular').text(str, 20, 40, { continued: true });
-  doc.font('bold').text(data.codeEDRPOU);
+  doc.font('regular').text(str, 20, 35, { continued: true });
+  doc.font('bold').text(codeEDRPOU);
   doc.lineWidth(1);
-  doc.rect(145, 39, 60, 14).stroke();
+  doc.rect(145, 34, 60, 14).stroke();
 
   // Section "найменування підприємства"
   doc.moveDown(1);
-  doc.fontSize(9);
-  doc.font('bold-italic').text(` ${data.orgName} `, { width: 320, align: 'center' });
-  doc.moveTo(20, 74).lineTo(320, 74).stroke();
+  doc.font('bold-italic').fontSize(9);
+  doc.text(` ${orgName} `, { width: 320, align: 'center' });
+  doc.moveTo(20, 69).lineTo(320, 69).stroke();
 
   doc.moveDown(0.2);
-  doc.fontSize(7);
+  doc.font('regular').fontSize(7);
   str = '(найменування підприємства (установи, організації)';
-  doc.font('regular').text(str, { width: 320, align: 'center' });
+  doc.text(str, { width: 320, align: 'center' });
 
   // Section "ПРИБУТКОВИЙ КАСОВИЙ ОРДЕР"
   doc.moveDown(2.5);
-  doc.fontSize(11);
+  doc.font('bold').fontSize(11);
   str = 'ПРИБУТКОВИЙ КАСОВИЙ ОРДЕР №      ';
-  doc.font('bold').text(str, { width: 320, align: 'center', continued: true });
-  doc.font('bold').text(`${data.orderNum}`, { underline: true });
+  doc.text(str, { width: 320, align: 'center', continued: true });
+  doc.text(`${orderNum}`, { underline: true });
 
   // Subsection "Дата"
-  doc.fontSize(8);
-  str = `від « ${invoiceDate.getDate()} »  ${ukrMonths[invoiceDate.getMonth()]} ` +
-    `${invoiceDate.getFullYear()} р.`;
-  doc.font('regular').text(str, { width: 320, align: 'center' });
+  doc.font('regular').fontSize(8);
+  doc.text(invoiceDate, { width: 320, align: 'center' });
 
   // Table 1
   doc.moveDown(1);
-  doc.fontSize(8);
+  doc.font('regular').fontSize(8);
   str = 'Кореспонду-\nючий рахунок,\nсубрахунок\nКод аналі-\nтичного\nобліку' +
     '\nСума\nцифрами\n\nКод цільового\nпризначення';
-  doc.font('regular').text(str, 23, 148,
-    { width: 266, height: 35, align: 'center', columns: 4, columnGap: 0 });
+  doc.text(str, 23, 143, { width: 266, height: 35, align: 'center', columns: 4, columnGap: 0 });
 
   doc.lineWidth(2);
-  doc.rect(20, 144, 310, 57).stroke();
+  doc.rect(20, 139, 310, 57).stroke();
   doc.lineWidth(1);
-  doc.moveTo(87, 144).lineTo(87, 201).stroke();
-  doc.moveTo(156, 144).lineTo(156, 201).stroke();
-  doc.moveTo(218, 144).lineTo(218, 201).stroke();
-  doc.moveTo(290, 144).lineTo(290, 201).stroke();
-  doc.moveTo(20, 185).lineTo(330, 185).stroke();
+  doc.moveTo(87, 139).lineTo(87, 196).stroke();
+  doc.moveTo(156, 139).lineTo(156, 196).stroke();
+  doc.moveTo(218, 139).lineTo(218, 196).stroke();
+  doc.moveTo(290, 139).lineTo(290, 196).stroke();
+  doc.moveTo(20, 180).lineTo(330, 180).stroke();
 
   // Section "Прийнято від"
   doc.moveDown(4);
   doc.fontSize(9);
   str = 'Прийнято від  ';
   doc.font('bold').text(str, { width: 320, continued: true });
-  str = `  ${data.firstName} ${data.patronomic} ${data.surname}  `;
+  str = `  ${firstName} ${patronomic} ${surname}  `;
   doc.font('regular').text(str, { underline: true, continued: true });
   str = ' кв. № ';
   doc.font('regular').text(str, { underline: false, continued: true });
-  str = ` ${data.flatNum} `;
+  str = ` ${flatNum} `;
   doc.font('regular').text(str, { underline: true });
 
   // Section and Table "Підстава"
   doc.moveDown(0.1);
-  doc.fontSize(9);
-  str = 'Підстава';
-  doc.font('bold').text(str);
+  doc.font('bold').fontSize(9);
+  doc.text('Підстава');
 
   doc.lineWidth(1);
-  doc.rect(20, 240, 310, 76).stroke();
-  doc.moveTo(20, 260).lineTo(330, 260).stroke();
-  doc.moveTo(20, 274).lineTo(330, 274).stroke();
-  doc.moveTo(20, 288).lineTo(330, 288).stroke();
-  doc.moveTo(20, 302).lineTo(330, 302).stroke();
-  doc.moveTo(80, 240).lineTo(80, 316).stroke();
-  doc.moveTo(140, 240).lineTo(140, 316).stroke();
-  doc.moveTo(200, 240).lineTo(200, 316).stroke();
-  doc.moveTo(260, 240).lineTo(260, 316).stroke();
+  const startY = 235;
+  const stepY = 14;
+  const tableHeight = 20 + servicesNum * stepY;
+  doc.rect(20, startY, 310, tableHeight).stroke();
+  const initY = 255;
+  doc.moveTo(20, initY).lineTo(330, initY).stroke();
+  for (let k = 0, currentY = 0; k < servicesNum; k++) {
+    currentY = initY + (k + 1) * stepY;
+    doc.moveTo(20, currentY).lineTo(330, currentY).stroke();
+  }
 
-  doc.fontSize(7);
+  const endY = startY + tableHeight;
+  doc.moveTo(80, startY).lineTo(80, endY).stroke();
+  doc.moveTo(140, startY).lineTo(140, endY).stroke();
+  doc.moveTo(200, startY).lineTo(200, endY).stroke();
+  doc.moveTo(260, startY).lineTo(260, endY).stroke();
+
+  doc.font('regular').fontSize(7);
+  const textOptions60 = { width: 60, align: 'center' };
+  const textOptions76 = { width: 76, align: 'center' };
   str = 'Наступний\nпоказник';
-  doc.font('regular').text(str, 81, 240, { width: 60, align: 'center' });
+  doc.text(str, 81, startY, textOptions60);
   str = 'Попередній\nпоказник';
-  doc.font('regular').text(str, 141, 240, { width: 60, align: 'center' });
+  doc.text(str, 141, startY, textOptions60);
   str = 'Різниця';
-  doc.font('regular').text(str, 198, 242, { width: 60, align: 'center' });
+  doc.text(str, 198, startY + 2, textOptions60);
   str = 'Сума до сплати';
-  doc.font('regular').text(str, 257, 242, { width: 76, align: 'center' });
+  doc.text(str, 257, startY + 2, textOptions76);
 
-  doc.fontSize(9);
-  doc.font('regular').text('Квартплата', 23, 261);
-  doc.font('regular').text('РЕМ', 23, 275);
-  doc.font('regular').text('Вода', 23, 289);
-  doc.font('regular').text('Сміття', 23, 303);
+  doc.font('regular').fontSize(9);
+  for (let k = 0, currentY = 0; k < servicesNum; k++) {
+    currentY = initY + (k * stepY) + 1;
+    doc.text(services[k].name, 23, currentY);
+    doc.text(services[k].nastupPokaznik, 81, currentY, textOptions60);
+    doc.text(services[k].poperedPokaznik, 141, currentY, textOptions60);
+    doc.text(services[k].riznitsa, 198, currentY, textOptions60);
+    doc.text(services[k].summa, 257, currentY, textOptions76);
+    totalSum += parseFloat(services[k].summa);
+  }
 
   // Section "Загальна сума"
-  doc.moveDown(1);
   doc.fontSize(9);
   str = 'Загальна сума _______________________________________________________________';
-  doc.font('bold').text(str);
-  str = '_______________________________________________________________грн._____коп.';
-  doc.font('regular').text(str);
+  doc.font('bold').text(str, 20, initY + (servicesNum * stepY) + 10);
+  doc.font('regular');
+  str = '_______________________________________________________________грн.';
+  doc.text(str, { continued: true });
+  str = ` ${String(totalSum.toFixed(2).slice(-2))} `;
+  doc.text(str, { underline: true, continued: true });
+  str = ' коп.';
+  doc.text(str, { underline: false });
 
   doc.moveDown(0.1);
   doc.fontSize(7);
@@ -168,120 +250,138 @@ function createInvoicePDF(doc, data) {
   doc.font('regular').text(str, { width: 250, align: 'center' });
 
   // Section "Головний бухгалтер"
-  doc.moveDown(2);
+  doc.moveDown(1.5);
   doc.fontSize(9);
   str = 'Головний бухгалтер  ';
   doc.font('bold').text(str, { width: 320, continued: true });
-  str = `     ${data.chiefAccounter}     `;
+  str = `     ${chiefAccounter}     `;
   doc.font('regular').text(str, { underline: true });
 
-
+  //
   // >>>>> Right-hand pane <<<<<
-  doc.fontSize(7);
+  //
+  doc.font('bold').fontSize(7);
   str = 'типова форма № КО-1';
-  doc.font('bold').text(str, 495, 40);
+  doc.text(str, 495, 35);
 
   // Section "найменування підприємства"
   doc.moveDown(1);
-  doc.fontSize(9);
-  str = ` ${data.orgName} `;
-  doc.font('bold-italic').text(str, 370, 54, { width: 210, align: 'center' });
-  doc.moveTo(370, 65).lineTo(570, 65).stroke();
+  doc.font('bold-italic').fontSize(9);
+  str = ` ${orgName} `;
+  doc.text(str, 370, 49, { width: 210, align: 'center' });
+  doc.moveTo(370, 60).lineTo(570, 60).stroke();
 
-  doc.fontSize(6);
+  doc.font('regular').fontSize(6);
   str = '(найменування підприємства (установи, організації)';
-  doc.font('regular').text(str, 370, 65, { width: 210, align: 'center' });
+  doc.text(str, 370, 60, { width: 210, align: 'center' });
 
   // Section "КВИТАНЦІЯ"
-  doc.fontSize(11);
+  doc.font('bold').fontSize(11);
   str = 'КВИТАНЦІЯ';
-  doc.font('bold').text(str, 357, 85, { width: 223, align: 'center' });
-  doc.fontSize(9);
+  doc.text(str, 357, 80, { width: 223, align: 'center' });
+  doc.font('bold').fontSize(9);
   str = 'до прибуткового касового ордеру №     ';
-  doc.font('bold').text(str, { width: 223, align: 'center', continued: true });
-  doc.font('bold').text(`${data.orderNum}`, { underline: true });
+  doc.text(str, { width: 223, align: 'center', continued: true });
+  doc.text(`${orderNum}`, { underline: true });
 
   // Subsection "Дата"
-  doc.fontSize(8);
-  str = `від « ${invoiceDate.getDate()} »  ${ukrMonths[invoiceDate.getMonth()]} ` +
-    `${invoiceDate.getFullYear()} р.`;
-  doc.font('regular').text(str, { width: 223, align: 'center' });
+  doc.font('regular').fontSize(8);
+  doc.text(invoiceDate, { width: 223, align: 'center' });
 
   // Section "Прийнято від"
   doc.moveDown(1);
   doc.fontSize(9);
   str = 'Прийнято від ';
   doc.font('bold').text(str, { width: 225, continued: true });
-  str = ` ${data.firstName.slice(0, 1)}.${data.patronomic.slice(0, 1)}. ${data.surname} `;
+  str = ` ${firstName.slice(0, 1)}.${patronomic.slice(0, 1)}. ${surname} `;
   doc.font('regular').text(str, { underline: true, continued: true });
   str = ' кв. № ';
   doc.font('regular').text(str, { underline: false, continued: true });
-  str = `${data.flatNum}`;
+  str = `${flatNum}`;
   doc.font('regular').text(str, { underline: true });
 
   // Section and Table "Підстава"
   doc.moveDown(0.1);
-  doc.fontSize(9);
-  str = 'Підстава';
-  doc.font('bold').text(str);
+  doc.font('bold').fontSize(9);
+  doc.text('Підстава');
 
   doc.lineWidth(1);
-  doc.rect(357, 160, 223, 90).stroke();
-  doc.moveTo(357, 180).lineTo(580, 180).stroke();
-  doc.moveTo(357, 194).lineTo(580, 194).stroke();
-  doc.moveTo(357, 208).lineTo(580, 208).stroke();
-  doc.moveTo(357, 222).lineTo(580, 222).stroke();
-  doc.moveTo(357, 236).lineTo(580, 236).stroke();
-  doc.moveTo(400, 160).lineTo(400, 236).stroke();
-  doc.moveTo(436, 160).lineTo(436, 236).stroke();
-  doc.moveTo(472, 160).lineTo(472, 236).stroke();
-  doc.moveTo(508, 160).lineTo(508, 236).stroke();
-  doc.moveTo(537, 160).lineTo(537, 250).stroke();
+  const startYR = 155;
+  const stepYR = 14;
+  const tableHeightR = 20 + (servicesNum * stepYR) + stepYR;
+  doc.rect(357, startYR, 223, tableHeightR).stroke();
+  const initYR = 175;
+  doc.moveTo(357, initYR).lineTo(580, initYR).stroke();
+  for (let k = 0, currentY = 0; k < servicesNum; k++) {
+    currentY = initYR + (k + 1) * stepYR;
+    doc.moveTo(357, currentY).lineTo(580, currentY).stroke();
+  }
 
-  doc.fontSize(7);
+  const endYR = startYR + tableHeightR - stepYR;
+  doc.moveTo(400, startYR).lineTo(400, endYR).stroke();
+  doc.moveTo(436, startYR).lineTo(436, endYR).stroke();
+  doc.moveTo(472, startYR).lineTo(472, endYR).stroke();
+  doc.moveTo(508, startYR).lineTo(508, endYR).stroke();
+  doc.moveTo(537, startYR).lineTo(537, endYR + stepYR).stroke();
+
+  doc.font('regular').fontSize(7);
+  const textOptions35 = { width: 35, align: 'center' };
+  const textOptions31 = { width: 31, align: 'center' };
+  const textOptions43 = { width: 43, align: 'center' };
   str = 'Тариф';
-  doc.font('regular').text(str, 400, 165, { width: 35, align: 'center' });
+  doc.font('regular').text(str, 400, startYR + 5, textOptions35);
   str = 'Наст.\nпоказник';
-  doc.font('regular').text(str, 436, 160, { width: 35, align: 'center' });
+  doc.font('regular').text(str, 436, startYR, textOptions35);
   str = 'Попер.\nпоказник';
-  doc.font('regular').text(str, 472, 160, { width: 35, align: 'center' });
+  doc.font('regular').text(str, 472, startYR, textOptions35);
   str = 'Різниця';
-  doc.font('regular').text(str, 508, 165, { width: 31, align: 'center' });
+  doc.font('regular').text(str, 508, startYR + 5, textOptions31);
   str = 'Сума до\nсплати ₴';
-  doc.font('regular').text(str, 537, 160, { width: 43, align: 'center' });
+  doc.font('regular').text(str, 537, startYR, textOptions43);
 
-  doc.fontSize(9);
-  doc.font('regular').text('Кв.плата', 359, 181);
-  doc.font('regular').text('РЕМ', 359, 195);
-  doc.font('regular').text('Вода', 359, 209);
-  doc.font('regular').text('Сміття', 359, 223);
-  doc.font('regular').text('Всього:', 500, 237);
+  doc.font('regular').fontSize(9);
+  for (let k = 0, currentYR = 0; k < servicesNum; k++) {
+    currentYR = initYR + (k * stepYR) + 1;
+    doc.text(services[k].shortName, 359, currentYR);
+    doc.text(services[k].tarif, 400, currentYR, textOptions35);
+    doc.text(services[k].nastupPokaznik, 436, currentYR, textOptions35);
+    doc.text(services[k].poperedPokaznik, 472, currentYR, textOptions35);
+    doc.text(services[k].riznitsa, 508, currentYR, textOptions31);
+    doc.text(services[k].summa, 537, currentYR, textOptions43);
+  }
+  const totalY = initYR + (servicesNum * stepYR) + 1;
+  doc.font('regular').text('Всього:', 500, totalY);
+  doc.font('regular').text(String(totalSum.toFixed(2)), 537, totalY, textOptions43);
 
   // Section "Загальна сума"
   doc.moveDown(1.2);
   doc.fontSize(9);
   str = 'Загальна сума ______________________________________';
-  doc.font('bold').text(str, 357, 270);
+  doc.font('bold').text(str, 357, initYR + (servicesNum * stepYR) + 30);
   doc.moveDown(0.1);
-  doc.fontSize(7);
+  doc.font('regular').fontSize(7);
   str = '(словами)';
-  doc.font('regular').text(str, { width: 223, align: 'center' });
+  doc.text(str, { width: 223, align: 'center' });
   doc.fontSize(9);
-  str = '________________________________________грн._____коп.';
-  doc.font('regular').text(str);
+  str = '________________________________________грн.';
+  doc.text(str, { continued: true });
+  str = ` ${String(totalSum.toFixed(2).slice(-2))} `;
+  doc.text(str, { underline: true, continued: true });
+  str = ' коп.';
+  doc.text(str, { underline: false });
 
   // Section "М.П."
-  doc.moveDown(2.5);
+  doc.moveDown(2);
   doc.fontSize(9);
   str = 'М.П.';
   doc.font('bold').text(str);
 
   // Section "Головний бухгалтер"
-  doc.moveDown(2.8);
+  doc.moveDown(2);
   doc.fontSize(9);
   str = 'Головний бухгалтер  ';
   doc.font('bold').text(str, { width: 320, continued: true });
-  str = `   ${data.chiefAccounter}   `;
+  str = `   ${chiefAccounter}   `;
   doc.font('regular').text(str, { underline: true });
 }
 
