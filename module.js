@@ -11,6 +11,17 @@ import { WriteStream } from 's3-streams';
  * @param {PDFDocument} doc - PDFDocument document to write to
  * @param {Object} data - Initial data to build an invoice
  * @returns none
+ * @example of the "data" param:
+    const data = {
+      "codeEDRPOU": "36325800",
+      "orgName": "ОСББ «Хотинська 49М»",
+      "orderNum": "264",
+      "firstName": "Тарас",
+      "patronomic": "Григорович",
+      "surname": "Шевченко",
+      "flatNum": "147",
+      "chiefAccounter": "Олена Петрівна Гонтар"
+    };
  */
 function createInvoicePDF(doc, data) {
   const ukrMonths = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
