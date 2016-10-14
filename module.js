@@ -5,7 +5,7 @@ import PDFDocument from 'pdfkit';
 import { S3 } from 'aws-sdk';
 import { WriteStream } from 's3-streams';
 import moment from 'moment';
-import num2str from './convert-num-to-words.js';
+import { num2str } from './convert-num-to-words.js';
 
 
 /**
