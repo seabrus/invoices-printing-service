@@ -5,6 +5,8 @@ import PDFDocument from 'pdfkit';
 import { S3 } from 'aws-sdk';
 import { WriteStream } from 's3-streams';
 import moment from 'moment';
+import num2str from './convert-num-to-words.js';
+
 
 /**
  * Draws an invoice as a PDF document
@@ -233,21 +235,25 @@ function createInvoicePDF(doc, data) {
   }
 
   // Section "Загальна сума"
-  doc.fontSize(9);
-  str = 'Загальна сума _______________________________________________________________';
-  doc.font('bold').text(str, 20, initY + (servicesNum * stepY) + 10);
+  doc.font('bold').fontSize(9);
+  str = 'Загальна сума ';
+  doc.text(str, 20, initY + (servicesNum * stepY) + 10, { continued: true });
   doc.font('regular');
-  str = '_______________________________________________________________грн.';
-  doc.text(str, { continued: true });
-  str = ` ${String(totalSum.toFixed(2).slice(-2))} `;
+  const summaInWords = num2str(totalSum);
+  str = `${summaInWords}`;
+  doc.text(str, { underline: true, continued: true });
+  str = ' грн. ';
+  doc.text(str, { underline: false, continued: true });
+  str = `${String(totalSum.toFixed(2).slice(-2))}`;
   doc.text(str, { underline: true, continued: true });
   str = ' коп.';
   doc.text(str, { underline: false });
-
+/*
   doc.moveDown(0.1);
   doc.fontSize(7);
   str = '(словами)';
   doc.font('regular').text(str, { width: 250, align: 'center' });
+*/
 
   // Section "Головний бухгалтер"
   doc.moveDown(1.5);
@@ -355,20 +361,25 @@ function createInvoicePDF(doc, data) {
 
   // Section "Загальна сума"
   doc.moveDown(1.2);
-  doc.fontSize(9);
-  str = 'Загальна сума ______________________________________';
-  doc.font('bold').text(str, 357, initYR + (servicesNum * stepYR) + 30);
-  doc.moveDown(0.1);
-  doc.font('regular').fontSize(7);
-  str = '(словами)';
-  doc.text(str, { width: 223, align: 'center' });
-  doc.fontSize(9);
-  str = '________________________________________грн.';
-  doc.text(str, { continued: true });
-  str = ` ${String(totalSum.toFixed(2).slice(-2))} `;
+
+  doc.font('bold').fontSize(9);
+  str = 'Загальна сума ';
+  doc.text(str, 357, initYR + (servicesNum * stepYR) + 30, { continued: true });
+  doc.font('regular');
+  str = `${summaInWords}`;
+  doc.text(str, { underline: true, continued: true });
+  str = ' грн. ';
+  doc.text(str, { underline: false, continued: true });
+  str = `${String(totalSum.toFixed(2).slice(-2))}`;
   doc.text(str, { underline: true, continued: true });
   str = ' коп.';
   doc.text(str, { underline: false });
+/*
+  doc.moveDown(0.1);
+  doc.fontSize(7);
+  str = '(словами)';
+  doc.font('regular').text(str, { width: 180, align: 'center' });
+*/
 
   // Section "М.П."
   doc.moveDown(2);
